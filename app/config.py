@@ -51,6 +51,7 @@ class Config(BaseSettings):
     TWILIO_ACCOUNT_SID :str
     TWILIO_AUTH_TOKEN : str
     TWILIO_MESSAGING_SERVICE_SID :str
+    GEMINI_API_KEY: str | None = None
 
     
     class Config:
