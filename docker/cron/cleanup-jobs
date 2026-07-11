@@ -1,0 +1,6 @@
+# Run attachment cleanup daily at 02:00 AM
+0 2 * * * cd /app && python -m app.cli.cleanup_attachments >> /var/log/cron.log 2>&1
+# docker/cron/cleanup-jobs
+
+# Reset broken goal streaks daily at 01:30 AM
+30 1 * * * cd /app && python -m app.cli.reconcile_goal_streaks >> /var/log/cron.log 2>&1
