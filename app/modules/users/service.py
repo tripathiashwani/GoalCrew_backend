@@ -83,7 +83,13 @@ class UserService:
         </body>
         </html>
         """
-        send_email(to_email, subject, body)
+        try:
+
+            send_email(to_email, subject, body)
+        
+        except Exception as e:
+            exception_logger.exception(f"Error while sending verification email: {str(e)}")
+            
 
     async def create_user(self, session: AsyncSession, user_create: UserCreate) -> UserRead:
         logger.info(f"Creating user with email={user_create.email}")
@@ -410,7 +416,13 @@ class UserService:
             </html>
             """
 
-            send_email(to_email, subject, body)
+            try:
+
+                send_email(to_email, subject, body)
+            
+            except Exception as e:
+                exception_logger.exception(f"Error while sending forgot password email: {str(e)}")
+                
         
         except Exception as e:
             exception_logger.exception(f"Error while send forgot password email:{str(e)}")
