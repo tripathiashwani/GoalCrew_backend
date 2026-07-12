@@ -1,21 +1,28 @@
 import firebase_admin
 from firebase_admin import credentials
 import json
+from pathlib import Path
 from app.config import config
 from app.utils.logger import get_logger
 
 logger = get_logger("Firebase_service")
 
+
+def _load_firebase_certificate() -> credentials.Certificate:
+    if config.FIREBASE_CREDENTIALS_JSON:
+        return credentials.Certificate(json.loads(config.FIREBASE_CREDENTIALS_JSON))
+
+    if config.FIREBASE_CREDENTIALS_PATH:
+        credentials_path = Path(config.FIREBASE_CREDENTIALS_PATH)
+        return credentials.Certificate(str(credentials_path))
+
+    raise ValueError("Set FIREBASE_CREDENTIALS_JSON in the environment")
+
 def initialize_firebase() -> None:
     if firebase_admin._apps:
         return  # already initialized
     try:
-        if config.FIREBASE_CREDENTIALS_JSON:
-            cred = credentials.Certificate(json.loads(config.FIREBASE_CREDENTIALS_JSON))
-        elif config.FIREBASE_CREDENTIALS_PATH:
-            cred = credentials.Certificate(config.FIREBASE_CREDENTIALS_PATH)
-        else:
-            raise ValueError("Set FIREBASE_CREDENTIALS_JSON or FIREBASE_CREDENTIALS_PATH")
+        cred = _load_firebase_certificate()
         firebase_admin.initialize_app(
             cred,
             {
