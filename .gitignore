@@ -116,9 +116,6 @@ myenv/
 
 .idea/*
 
-# alembic changes
-migrations/versions/*
-
 # LOGS
 logs/*
 
