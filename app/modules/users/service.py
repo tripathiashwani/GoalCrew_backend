@@ -131,7 +131,7 @@ class UserService:
                 phone_number=user_create.phone_number,
                 country_code=user_create.country_code,
                 verification_token=verification_token,
-                is_verified=False,
+                is_verified=True,
             )
 
             session.add(user)
