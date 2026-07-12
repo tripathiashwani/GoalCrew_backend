@@ -1,8 +1,10 @@
 # app/config.py
 from typing import List, ClassVar
 from pathlib import Path
+from typing import Any
 from pydantic_settings import BaseSettings
 from pydantic import AnyHttpUrl, SecretStr
+from pydantic import field_validator
 
 
 class Config(BaseSettings):
@@ -59,6 +61,22 @@ class Config(BaseSettings):
         env_file = ".env"
         env_file_encoding = "utf-8"
         extra = "allow"
+
+    @field_validator("BACKEND_CORS_ORIGINS", mode="before")
+    @classmethod
+    def parse_backend_cors_origins(cls, value: Any) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            stripped = value.strip()
+            if not stripped:
+                return []
+            if stripped.startswith("["):
+                import json
+
+                return json.loads(stripped)
+            return [item.strip() for item in stripped.split(",") if item.strip()]
+        return value
 
 
 # ensure upload dir exists at import time
