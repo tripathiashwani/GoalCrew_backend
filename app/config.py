@@ -7,7 +7,8 @@ from pydantic import AnyHttpUrl, SecretStr
 
 class Config(BaseSettings):
     DATABASE_URL: str
-    FIREBASE_CREDENTIALS_PATH: str
+    FIREBASE_CREDENTIALS_PATH: str | None = None
+    FIREBASE_CREDENTIALS_JSON: str | None = None
     FIREBASE_PROJECT_ID: str
     FCM_SERVER_KEY: SecretStr
 

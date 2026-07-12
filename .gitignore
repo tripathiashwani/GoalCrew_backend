@@ -121,3 +121,6 @@ migrations/versions/*
 
 # LOGS
 logs/*
+
+.firebase_service_account.json
+app/firebase/firebase_service_account.json

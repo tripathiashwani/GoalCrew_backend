@@ -49,6 +49,11 @@ app = FastAPI(title="GoalCrew Backend", version="0.1.0", lifespan=lifespan,)
 
 API_V1_PREFIX = "/api/v1"
 
+
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}
+
 # Load config
 config = Config()
 
