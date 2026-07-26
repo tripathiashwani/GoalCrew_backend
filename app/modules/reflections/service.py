@@ -25,6 +25,7 @@ from app.db.models.reflection_attachments import ReflectionAttachment
 from app.modules.events.dispatcher import dispatcher
 from app.modules.events.schemas import DomainEvent
 from app.modules.notifications.constants import NotificationType
+from app.utils.nsfw import check_nsfw
 
 from app.utils.logger import get_logger
 exception_logger=get_logger("Exceptions_logs")
@@ -446,6 +447,8 @@ async def add_reflection_attachment(
     file,
 ):
     try:
+
+        await check_nsfw(file)
 
         await _ensure_active_member(db, pod_id, user.id)
 
