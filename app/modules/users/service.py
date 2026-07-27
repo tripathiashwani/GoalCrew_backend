@@ -234,6 +234,90 @@ class UserService:
         result = await session.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def get_or_create_sso_user(self, session: AsyncSession, firebase_user: dict) -> User:
+        # Check by firebase_uid
+        stmt = select(User).where(User.firebase_uid == firebase_user["uid"])
+        result = await session.execute(stmt)
+        user = result.scalar_one_or_none()
+        if user:
+            return user
+        
+        # If not found by firebase_uid, check by email
+        email = firebase_user.get("email")
+        if email:
+            stmt = select(User).where(User.email == email)
+            result = await session.execute(stmt)
+            user = result.scalar_one_or_none()
+            if user:
+                # Update the existing user's firebase_uid to link accounts
+                user.firebase_uid = firebase_user["uid"]
+                if not user.is_verified:
+                    user.is_verified = True
+                try:
+                    await session.commit()
+                    await session.refresh(user)
+                    logger.info(f"Linked existing email {email} to SSO firebase_uid {firebase_user['uid']}")
+                except Exception as e:
+                    # In case of concurrent updates
+                    await session.rollback()
+                    stmt = select(User).where(User.firebase_uid == firebase_user["uid"])
+                    result = await session.execute(stmt)
+                    user = result.scalar_one_or_none()
+                    if not user:
+                        raise e
+                return user
+
+        # Otherwise, create a new user
+        import uuid
+        
+        password_hash = hash_password(str(uuid.uuid4()))
+        
+        user = User(
+            firebase_uid=firebase_user["uid"],
+            email=email,
+            name=firebase_user.get("name") or (email.split("@")[0] if email else "User"),
+            password_hash=password_hash,
+            is_verified=True,
+            is_onboarded=False,
+        )
+        try:
+            session.add(user)
+            await session.flush()
+            
+            # Create DEFAULT UserPreference
+            preferences = UserPreference(
+                user_id=user.id,
+                checkin_time=time(9, 0),
+            )
+            session.add(preferences)
+            await session.commit()
+            await session.refresh(user)
+            logger.info(f"SSO user auto-created: id={user.id}, email={user.email}")
+            
+            await dispatcher.emit(
+                DomainEvent(
+                    type=NotificationType.ACCOUNT_CREATED,
+                    actor_id=user.id,
+                    entity_type="account",
+                    entity_id=user.id,
+                    context={
+                        "actor_name": user.name or "Someone",
+                        "details": f"{user.name} created new account" or "Someone",
+                        "target_ids": [user.id]
+                    },
+                )
+            )
+            return user
+        except Exception as e:
+            await session.rollback()
+            # If it failed due to unique/concurrent constraint, try to retrieve it
+            stmt = select(User).where(User.firebase_uid == firebase_user["uid"])
+            result = await session.execute(stmt)
+            user = result.scalar_one_or_none()
+            if user:
+                return user
+            raise e
+
     async def get_user_by_id(self, session: AsyncSession, user_id: str) -> Optional[User]:
         stmt = select(User).where(User.id == user_id)
         result = await session.execute(stmt)

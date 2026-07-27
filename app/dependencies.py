@@ -34,13 +34,7 @@ async def get_current_user(
         )
 
     service = UserService()
-    db_user = await service.get_user_by_firebase_uid(session, firebase_user["uid"])
-
-    if not db_user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
-        )
+    db_user = await service.get_or_create_sso_user(session, firebase_user)
 
     return db_user
 
