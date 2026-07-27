@@ -27,6 +27,7 @@ from app.modules.user_preferences.routes import router as user_preference_router
 from app.modules.admin.routes import router as admin_router
 from app.modules.log_module.routes import router as log_router
 from app.modules.chatbot.routes import router as chatbot_router
+from app.modules.reports.routes import router as reports_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -83,6 +84,7 @@ app.include_router(notifications_router,prefix=API_V1_PREFIX)
 app.include_router(admin_router,prefix=API_V1_PREFIX)
 app.include_router(log_router,prefix=API_V1_PREFIX)
 app.include_router(chatbot_router, prefix=API_V1_PREFIX)
+app.include_router(reports_router, prefix=API_V1_PREFIX)
 
 
 # @app.exception_handler(status.HTTP_401_UNAUTHORIZED)
