@@ -70,3 +70,12 @@ class PodMemberToggleResponse(BaseModel):
     user_id: UUID
     is_active: bool
     role: str
+
+class PodLeaderboardMemberResponse(BaseModel):
+    user_id: UUID
+    username: str
+    name: Optional[str] = None
+    profile_photo_url: Optional[str] = None
+    max_streak: int
+    total_checkins: int
+    score: int

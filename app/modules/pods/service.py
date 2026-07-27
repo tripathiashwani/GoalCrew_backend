@@ -11,6 +11,8 @@ from app.modules.events.schemas import DomainEvent
 from app.modules.notifications.constants import NotificationType
 from app.db.models.pod_goal_participants import PodGoalParticipant
 from app.db.models.pod_goals import PodGoal
+from app.db.models.goal_streaks import GoalStreak
+from app.db.models.reflections import Reflection
 
 from app.utils.logger import get_logger
 exception_logger=get_logger("Exceptions_logs")
@@ -523,3 +525,64 @@ async def toggle_member_active(
             status_code=400,
             detail=f"{str(e)}",
         )
+
+async def get_pod_leaderboard(db: AsyncSession, pod_id: uuid.UUID, user: User):
+    # 1. Verify user is in the pod
+    member = await db.scalar(
+        select(PodMember).where(
+            PodMember.pod_id == pod_id,
+            PodMember.user_id == user.id,
+            PodMember.is_active.is_(True),
+        )
+    )
+    if not member:
+        raise HTTPException(status_code=403, detail="Not a pod member")
+
+    # 2. Get all active members in the pod
+    members_stmt = (
+        select(PodMember, User)
+        .join(User, User.id == PodMember.user_id)
+        .where(
+            PodMember.pod_id == pod_id,
+            PodMember.is_active.is_(True)
+        )
+    )
+    res = await db.execute(members_stmt)
+    rows = res.all()
+
+    leaderboard = []
+    for pm, u in rows:
+        # Get user's max streak in this pod's goals
+        max_streak = await db.scalar(
+            select(func.max(GoalStreak.current_streak))
+            .join(PodGoal, PodGoal.id == GoalStreak.goal_id)
+            .where(
+                GoalStreak.user_id == u.id,
+                PodGoal.pod_id == pod_id
+            )
+        ) or 0
+
+        # Get total checkins for this user in this pod
+        total_checkins = await db.scalar(
+            select(func.count(Reflection.id))
+            .where(
+                Reflection.user_id == u.id,
+                Reflection.pod_id == pod_id
+            )
+        ) or 0
+
+        score = (max_streak * 10) + total_checkins
+
+        leaderboard.append({
+            "user_id": u.id,
+            "username": u.username,
+            "name": u.name,
+            "profile_photo_url": u.profile_photo_url,
+            "max_streak": max_streak,
+            "total_checkins": total_checkins,
+            "score": score
+        })
+
+    # Sort by score descending, then by username
+    leaderboard.sort(key=lambda x: (-x["score"], x["username"]))
+    return leaderboard

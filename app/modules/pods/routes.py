@@ -156,3 +156,12 @@ async def toggle_member_active(
         "is_active": updated.is_active,
         "role": updated.role,
     }
+
+
+@router.get("/{pod_id}/leaderboard", response_model=list[schemas.PodLeaderboardMemberResponse])
+async def get_pod_leaderboard(
+    pod_id: UUID,
+    db: AsyncSession = Depends(get_session),
+    user=Depends(get_current_user),
+):
+    return await service.get_pod_leaderboard(db, pod_id, user)
