@@ -52,7 +52,7 @@ GoalCrew_backend/
 
 ---
 
-## 🚀 Outstanding Features for Hiring Managers
+## 🚀 Outstanding Features
 
 1.  **Strict Security & Decoupled Authentication**: The backend acts as a secure authenticator. It validates local credentials, issues a Firebase Custom Token, and leaves the client SDK to safely exchange it for a session ID token.
 2.  **Domain Event Dispatcher**: Includes an async in-memory event dispatcher (`app/modules/events/`) that decoupling cross-cutting concerns. For example, creating a pod immediately triggers a `POD_CREATED` domain event, which notifications handlers pick up and act on independently.
