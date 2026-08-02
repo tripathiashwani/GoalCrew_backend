@@ -342,8 +342,9 @@ async def ask_question(db: AsyncSession, user: User, question: str, pod_id: UUID
 
         return ChatResponse(
             answer=(
-                "I can answer pod analytics questions like best streak, most active member, "
-                "most active month, pod focus, or which pod has the most active members."
+                "I can only answer questions related to your pods, goals, and team activity. "
+                "Please ask a pod-related question! (e.g., best streak, most active member, "
+                "most active month, pod focus, or which pod has the most active members)"
             ),
             query_used=None,
         )
@@ -351,7 +352,15 @@ async def ask_question(db: AsyncSession, user: User, question: str, pod_id: UUID
     client = _load_genai_client()
     sql_prompt = build_sql_prompt(user_id, user_name, question, accessible_pods_cte, accessible_pods)
     generated_sql = await _generate_sql(client, sql_prompt)
-    sql_query = _ensure_scope_wrapper(generated_sql, accessible_pods_cte)
+    
+    cleaned_sql = _clean_sql(generated_sql)
+    if cleaned_sql.upper() == "UNRELATED" or not (cleaned_sql.upper().startswith("SELECT") or cleaned_sql.upper().startswith("WITH")):
+        return ChatResponse(
+            answer="I can only answer questions related to your pods, goals, and team activity. Please ask a pod-related question!",
+            query_used=None,
+        )
+
+    sql_query = _ensure_scope_wrapper(cleaned_sql, accessible_pods_cte)
 
     result_rows = await _run_sql(db, sql_query)
 
