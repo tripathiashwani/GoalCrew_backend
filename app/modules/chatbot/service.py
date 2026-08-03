@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta
 import json
 import re
 from uuid import UUID
 
-from sqlalchemy import select, text
+from fastapi import HTTPException, status
+from sqlalchemy import select, text, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import config
@@ -16,6 +18,7 @@ from app.db.models.pods import Pod
 from app.db.models.reflection_goals import ReflectionGoal
 from app.db.models.reflections import Reflection
 from app.db.models.user import User
+from app.db.models.chatbot_query_log import ChatbotQueryLog
 from app.modules.chatbot.prompt import (
     ANSWER_FORMATTING_PROMPT,
     SCHEMA_DESCRIPTION,
@@ -181,6 +184,42 @@ def _ensure_scope_wrapper(sql_query: str, accessible_pods_cte: str) -> str:
 
 
 async def ask_question(db: AsyncSession, user: User, question: str, pod_id: UUID | None = None) -> ChatResponse:
+    # Rate limit check
+    now = datetime.utcnow()
+    one_minute_ago = now - timedelta(minutes=1)
+    twenty_four_hours_ago = now - timedelta(hours=24)
+
+    # 1. 1-minute rate limit check
+    stmt_1m = (
+        select(func.count(ChatbotQueryLog.id))
+        .where(ChatbotQueryLog.user_id == user.id)
+        .where(ChatbotQueryLog.created_at >= one_minute_ago)
+    )
+    count_1m = (await db.execute(stmt_1m)).scalar() or 0
+    if count_1m >= 1:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="due to free gemini use case we have ristricted users to 1 call per minute only and overall 10 call total for a user per 24 hour"
+        )
+
+    # 2. 24-hour rate limit check
+    stmt_24h = (
+        select(func.count(ChatbotQueryLog.id))
+        .where(ChatbotQueryLog.user_id == user.id)
+        .where(ChatbotQueryLog.created_at >= twenty_four_hours_ago)
+    )
+    count_24h = (await db.execute(stmt_24h)).scalar() or 0
+    if count_24h >= 10:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="due to free gemini use case we have ristricted users to 1 call per minute only and overall 10 call total for a user per 24 hour"
+        )
+
+    # Log query attempt
+    log_entry = ChatbotQueryLog(user_id=user.id, created_at=now)
+    db.add(log_entry)
+    await db.commit()
+
     accessible_stmt = (
         select(Pod.id, Pod.name, Pod.focus_area)
         .join(PodMember, PodMember.pod_id == Pod.id)

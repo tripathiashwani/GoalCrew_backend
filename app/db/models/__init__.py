@@ -16,6 +16,7 @@ from app.db.models.user_preferences import UserPreference
 from app.db.models.notification import Notification
 from app.db.models.activity_log import ActivityLog
 from app.db.models.sms_log import SmsLog
+from app.db.models.chatbot_query_log import ChatbotQueryLog
 __all__ = [
     "User",
     "Pod",
@@ -34,5 +35,7 @@ __all__ = [
     "ReflectionComment",
     "ReflectionReaction",
     "UserPreference",
-    "ActivityLog"
+    "ActivityLog",
+    "ChatbotQueryLog"
 ]
+
