@@ -21,6 +21,8 @@ from app.db.models.user import User  # adjust import
 from app.utils.file_upload import save_reflection_attachment
 from app.config import config
 from app.db.models.reflection_attachments import ReflectionAttachment
+from app.db.models.reflection_embedding import ReflectionEmbedding
+from app.utils.embedding_utils import get_embedding_async
 
 from app.modules.events.dispatcher import dispatcher
 from app.modules.events.schemas import DomainEvent
@@ -211,10 +213,23 @@ async def add_reflection(
                 completed=completed,
                 frequency_type=goal.frequency_type if goal else "daily"
             )
-        
 
+        # Generate and save embedding if content is present
+        if content and content.strip():
+            try:
+                emb_values = await get_embedding_async(content.strip())
+                if emb_values:
+                    db.add(
+                        ReflectionEmbedding(
+                            reflection_id=reflection.id,
+                            embedding=emb_values,
+                        )
+                    )
+            except Exception as exc:
+                exception_logger.exception(f"Failed to generate embedding for reflection {reflection.id}: {exc}")
 
         await db.commit()
+
 
 
         await dispatcher.emit(

@@ -17,6 +17,7 @@ from app.db.models.notification import Notification
 from app.db.models.activity_log import ActivityLog
 from app.db.models.sms_log import SmsLog
 from app.db.models.chatbot_query_log import ChatbotQueryLog
+from app.db.models.reflection_embedding import ReflectionEmbedding
 __all__ = [
     "User",
     "Pod",
@@ -36,6 +37,8 @@ __all__ = [
     "ReflectionReaction",
     "UserPreference",
     "ActivityLog",
-    "ChatbotQueryLog"
+    "ChatbotQueryLog",
+    "ReflectionEmbedding"
 ]
+
 

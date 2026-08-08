@@ -17,12 +17,17 @@ from app.db.models.pod_goals import PodGoal
 from app.db.models.pods import Pod
 from app.db.models.reflection_goals import ReflectionGoal
 from app.db.models.reflections import Reflection
+import numpy as np
 from app.db.models.user import User
 from app.db.models.chatbot_query_log import ChatbotQueryLog
+from app.db.models.reflection_embedding import ReflectionEmbedding
+from app.utils.embedding_utils import get_embedding_async
 from app.modules.chatbot.prompt import (
     ANSWER_FORMATTING_PROMPT,
     SCHEMA_DESCRIPTION,
     SQL_GENERATION_PROMPT,
+    ROUTER_PROMPT,
+    RAG_SYNTHESIS_PROMPT,
 )
 from app.modules.chatbot.schemas import ChatResponse
 from app.utils.logger import get_logger
@@ -158,6 +163,98 @@ async def _run_sql(db: AsyncSession, sql_query: str) -> list[dict[str, object]]:
         await db.execute(text("SET TRANSACTION READ ONLY"))
         result = await db.execute(text(sql_query))
         return [_normalize_row(row) for row in result.mappings().all()[:MAX_QUERY_ROWS]]
+
+
+async def _classify_intent(client, question: str) -> str:
+    prompt = f"{ROUTER_PROMPT}\n\nUser Question: {question}"
+    try:
+        response = await client.aio.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+        )
+        raw = _extract_text(response).strip().upper()
+        if "QUALITATIVE" in raw:
+            return "QUALITATIVE"
+        elif "ANALYTICS" in raw:
+            return "ANALYTICS"
+        return "UNRELATED"
+    except Exception as exc:
+        logger.warning(f"Classification failed: {exc}, defaulting to ANALYTICS")
+        return "ANALYTICS"
+
+
+async def _search_reflections_rag(
+    db: AsyncSession,
+    client,
+    question: str,
+    target_pod: dict[str, str],
+) -> ChatResponse:
+    question_embedding = await get_embedding_async(question, client=client)
+    if not question_embedding:
+        return ChatResponse(
+            answer="I could not generate an embedding to search reflections.",
+            query_used="RAG_SEARCH_REFLECTIONS",
+        )
+
+    target_pod_id = UUID(target_pod["id"])
+    stmt = (
+        select(Reflection.content, Reflection.reflection_date, User.name, ReflectionEmbedding.embedding)
+        .join(User, User.id == Reflection.user_id)
+        .join(ReflectionEmbedding, ReflectionEmbedding.reflection_id == Reflection.id)
+        .where(Reflection.pod_id == target_pod_id)
+    )
+    rows = (await db.execute(stmt)).all()
+
+    if not rows:
+        return ChatResponse(
+            answer=f"I couldn't find any check-in reflections with embeddings in {target_pod['name']}.",
+            query_used="RAG_SEARCH_REFLECTIONS",
+        )
+
+    q_vec = np.array(question_embedding, dtype=np.float32)
+    candidates = []
+    for content, r_date, u_name, emb_list in rows:
+        if not content:
+            continue
+        e_vec = np.array(emb_list, dtype=np.float32)
+        score = float(np.dot(q_vec, e_vec))
+        candidates.append((score, content, str(r_date), u_name or "A teammate"))
+
+    if not candidates:
+        return ChatResponse(
+            answer=f"No matching check-ins found in {target_pod['name']}.",
+            query_used="RAG_SEARCH_REFLECTIONS",
+        )
+
+    candidates.sort(key=lambda x: x[0], reverse=True)
+    top_candidates = candidates[:5]
+
+    context_lines = [
+        f"- On {r_date}, {u_name} wrote: \"{content}\""
+        for score, content, r_date, u_name in top_candidates
+    ]
+    context_str = "\n".join(context_lines)
+
+    synthesis_prompt = f"""
+{RAG_SYNTHESIS_PROMPT}
+
+User Question: {question}
+Pod Name: {target_pod['name']}
+
+Retrieved Reflections:
+{context_str}
+""".strip()
+
+    response = await client.aio.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=synthesis_prompt,
+    )
+    answer = _extract_text(response)
+
+    return ChatResponse(
+        answer=answer,
+        query_used=f"RAG_SEARCH_REFLECTIONS (Retrieved {len(top_candidates)} reflections)",
+    )
 
 
 def _normalize_row(row) -> dict[str, object]:
@@ -379,6 +476,21 @@ async def ask_question(db: AsyncSession, user: User, question: str, pod_id: UUID
             )
             return ChatResponse(answer=answer, query_used=sql_query)
 
+        if any(keyword in normalized_question for keyword in ["struggle", "feel", "burnout", "burned out", "reflection", "check-in", "challenge", "wrote", "learning"]):
+            stmt = (
+                select(Reflection.content, Reflection.reflection_date, User.name)
+                .join(User, User.id == Reflection.user_id)
+                .where(Reflection.pod_id == UUID(target_pod["id"]))
+                .order_by(Reflection.created_at.desc())
+                .limit(5)
+            )
+            rows = (await db.execute(stmt)).all()
+            if not rows:
+                return ChatResponse(answer=f"I couldn’t find any reflections in {target_pod['name']} yet.", query_used=None)
+            latest = rows[0]
+            answer = f"In {target_pod['name']}, {latest[2] or 'A teammate'} on {latest[1]} wrote: \"{latest[0]}\""
+            return ChatResponse(answer=answer, query_used="FALLBACK_REFLECTION_SEARCH")
+
         return ChatResponse(
             answer=(
                 "I can only answer questions related to your pods, goals, and team activity. "
@@ -389,6 +501,21 @@ async def ask_question(db: AsyncSession, user: User, question: str, pod_id: UUID
         )
 
     client = _load_genai_client()
+    intent = await _classify_intent(client, question)
+
+    if intent == "QUALITATIVE":
+        return ChatResponse(
+            answer="Semantic search over check-in reflections is currently unavailable because our free Gemini model does not support embeddings. You can still ask analytical questions like best streaks, most active members, pod focus, or monthly activity!",
+            query_used="RAG_EMBEDDINGS_FREE_TIER_NOTICE",
+        )
+
+
+    if intent == "UNRELATED":
+        return ChatResponse(
+            answer="I can only answer questions related to your pods, goals, and team activity. Please ask a pod-related question!",
+            query_used=None,
+        )
+
     sql_prompt = build_sql_prompt(user_id, user_name, question, accessible_pods_cte, accessible_pods)
     generated_sql = await _generate_sql(client, sql_prompt)
     
