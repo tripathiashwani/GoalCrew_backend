@@ -16,7 +16,10 @@ GoalCrew empowers small communities (Pods) to track goals, share daily check-ins
 *   **Firebase Admin SDK**: Performs token verification and manages secure Custom Token generation for decoupled client authentication.
 *   **Matplotlib & ReportLab**: Handles server-side chart rendering and builds downloadable PDF summaries of pod stats on the fly.
 *   **Pydantic v2**: Handles high-speed data validation and serialization.
+*   **Google GenAI SDK (Gemini Flash & text-embedding-004)**: Powers the hybrid AI accountability partner, handling intent routing, text-to-SQL generation, vector embeddings, and RAG synthesis.
+*   **NumPy**: Executes SIMD-accelerated in-memory cosine similarity and vector dot-product computations for qualitative reflection retrieval.
 *   **Celery & Redis (Optional)**: Ready for background queue management and event scheduling.
+
 
 ---
 
@@ -58,6 +61,11 @@ GoalCrew_backend/
 2.  **Domain Event Dispatcher**: Includes an async in-memory event dispatcher (`app/modules/events/`) that decoupling cross-cutting concerns. For example, creating a pod immediately triggers a `POD_CREATED` domain event, which notifications handlers pick up and act on independently.
 3.  **On-Demand Report Engine**: An isolated `reports` service that aggregates pod member check-ins, charts performance using `matplotlib` in-memory, embeds the chart inside a dynamically styled `reportlab` PDF template, and streams the document as an attachment directly back to the client.
 4.  **Streaks Reconciliation Engine**: Built-in cron-ready services (`GoalStreakReconciliationService`) that reconcile streaks daily and weekly, accounting for timezones and active goal schedules.
+5.  **AI Accountability Partner & Hybrid RAG Engine**:
+    *   **Intent-Based Routing**: Dynamically classifies natural-language queries into `ANALYTICS` (database stats) vs. `QUALITATIVE` (semantic check-ins) vs. `UNRELATED` using Google Gemini.
+    *   **Semantic Vector Search (RAG)**: Automatically generates and stores 768-dimensional embeddings (`text-embedding-004`) for daily check-in reflections, executing pod-scoped in-memory cosine similarity searches with NumPy to ground AI responses with date and author citations.
+    *   **Text-to-SQL Analytics**: Converts user questions about streaks, activity counts, and leaderboards into safe, CTE-scoped read-only PostgreSQL queries.
+    *   **Database-Backed Rate Limiting**: Enforces persistent per-user quotas (1 call/min, 10 calls/24h) via `chatbot_query_logs` to protect Gemini API limits.
 
 ---
 
